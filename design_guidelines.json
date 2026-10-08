@@ -1,0 +1,155 @@
+{
+  "app_name": "Paavni Bookkeeping",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A highly legible, data-dense, and professional finance aesthetic that grounds operations in trust and clarity through structure and typography.",
+  "color": {
+    "surface": "#F2F2F7",
+    "onSurface": "#1C1C1E",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#1C1C1E",
+    "surfaceTertiary": "#E5E5EA",
+    "onSurfaceTertiary": "#3A3A3C",
+    "surfaceInverse": "#2C2C2E",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#2A5C43",
+    "onBrand": "#FFFFFF",
+    "brandPrimary": "#2A5C43",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#4A7C5F",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#E8F0EB",
+    "onBrandTertiary": "#1B3B2B",
+    "success": "#34C759",
+    "onSuccess": "#FFFFFF",
+    "warning": "#FF9500",
+    "onWarning": "#FFFFFF",
+    "error": "#FF3B30",
+    "onError": "#FFFFFF",
+    "info": "#1C1C1E",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E5EA",
+    "borderStrong": "#C7C7CC",
+    "divider": "#C6C6C8",
+    "muted": "#8E8E93"
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical breathing room for forms. Follow iOS rhythms. Use md for inner component padding and lg/xl for outer container margins.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": 1,
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use frosted glass on the bottom tab bar",
+      "Use on floating action buttons (FAB)",
+      "Use on sticky headers over scrolling content"
+    ],
+    "dont's": [
+      "Never apply to form fields, chips, or body content",
+      "Never blur the entire screen"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Dashboard",
+      "purpose": "A high-level financial overview showing monthly totals, category breakdowns, and paid vs. outstanding charts.",
+      "states": {
+        "loading": "Skeleton UI for metric cards and chart blocks.",
+        "empty": "Illustration of the dairy farm logo with text 'No data logged for this month' and a button to 'Add Expense'.",
+        "error": "Message 'Failed to load dashboard' with a Retry button."
+      },
+      "layout": "Display current month's income and expenses as oversized metric cards at the top. Below, use a stacked bar chart for Paid vs Outstanding amounts. Under that, a list of top expense categories. All sections wrapped in 'surfaceSecondary' cards with 'md' radius and 'shadow_tier 1' on 'surface' background."
+    },
+    {
+      "name": "Expenses List",
+      "purpose": "A filterable, paginated ledger of all recorded expenses.",
+      "states": {
+        "loading": "Skeleton list items.",
+        "empty": "Crumpled receipt illustration stating 'No expenses found' with 'Add Expense' CTA.",
+        "error": "Error text with 'Retry' CTA."
+      },
+      "layout": "Sticky header with horizontally scrolling filter chips (Category, Payment Status, Month). Below, a flat list of transaction rows. Each row: Icon (tinted by category), Vendor & Date (left), Amount & Status Badge (right). The list should have a floating action button (FAB) at the bottom right for 'New Expense' using glassmorphism."
+    },
+    {
+      "name": "Add/Edit Expense",
+      "purpose": "A data-dense form to record all aspects of an expense, invoice, and payment.",
+      "states": {
+        "loading": "Spinner during save.",
+        "empty": "N/A - this is a form.",
+        "error": "Inline validation errors below inputs in 'error' color."
+      },
+      "layout": "Single-column scrollable form grouped into iOS-native grouped sections. Group 1: Basics (Date, Vendor, Cost Centre). Group 2: Categorization (Main, Sub, Head). Group 3: Financials (Amount, GST%, GST Amt, TDS, Taxable, Total). Group 4: Payment (Status segmented control, Mode, Paid, Outstanding). Group 5: Remarks. Inputs use labels above fields. Submit CTA is sticky at the bottom over a glass or solid background, inside a KeyboardAvoidingView."
+    },
+    {
+      "name": "Vendors & Categories",
+      "purpose": "Management interface to add, edit, and disable vendors and categories.",
+      "states": {
+        "loading": "Centered spinner.",
+        "empty": "Text 'No vendors/categories configured'.",
+        "error": "Error text with 'Retry'."
+      },
+      "layout": "Segmented control at the top to toggle between Vendors and Categories. Simple list views beneath with swipe-to-edit or tap-to-open-sheet behavior. 'Add' button in the top right header."
+    }
+  ],
+  "images": {
+    "dashboard_empty_farm": {
+      "url": "https://images.unsplash.com/photo-1768850418252-37af725e46bb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwxfHxkYWlyeSUyMGZhcm0lMjBsb2dvfGVufDB8fHx8MTc5MTQ0Njc2M3ww&ixlib=rb-4.1.0&q=85",
+      "alt": "Dairy milk bottle representing the Paavni brand"
+    },
+    "receipt_empty": {
+      "url": "https://images.unsplash.com/photo-1545941962-1b6654eb8072?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODh8MHwxfHNlYXJjaHwxfHxyZWNlaXB0JTIwZW1wdHklMjBzdGF0ZXxlbnwwfHx8fDE3OTE0NDY3NjR8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "A crumpled official receipt representing no transactions found"
+    }
+  },
+  "haptics": {
+    "save_expense": "notificationSuccess",
+    "tab_switch": "selection",
+    "toggle_status": "impactLight",
+    "delete_item": "notificationWarning"
+  },
+  "instructions_to_main_agent": [
+    "Strictly adhere to the 'iOS-Native Clean' personality.",
+    "Do not use ANY blue, indigo, or purple. Stick to the brand palette of forest and sage green provided.",
+    "For the data-dense Add Expense form, use clear iOS grouped table view styles to chunk the form (Basics, Categorization, Financials, Payment, Remarks). This prevents cognitive overload.",
+    "The primary action (Save Expense) must be a sticky floating CTA at the bottom of the form, ensuring users don't have to scroll to the very bottom to submit.",
+    "Status badges (Paid, Outstanding, Unpaid, Partly Paid) should leverage the 'success', 'warning', and 'error' tokens.",
+    "Implement the gradient-to-dark scrim pattern for any text over the dashboard/empty state imagery."
+  ]
+}
