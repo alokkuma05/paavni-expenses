@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 3 (Smart Filters + Budget Tracking) tested end-to-end. Backend: 13/13 new pytest cases pass covering (a) GET /api/expenses date_from/date_to inclusive YYYY-MM-DD lexical range, (b) q case-insensitive regex across vendor/remarks/product_line, (c) combining q+main_category+payment_status+date range, (d) POST /api/budgets upsert (second POST for same {month, main_category} updates amount, no duplicate), (e) GET /api/budgets?month filter, (f) DELETE /api/budgets/{id} soft delete removes from GET list, (g) GET /api/dashboard?month includes budget block with has_budgets/total_budget/total_spent/by_category each containing category/budget/spent/remaining/pct, (h) has_budgets=false when month omitted OR month has no budgets, (i) seeded May 2026 budget (Milk Procurement Cost 50000 vs actual 55000 => pct 110.0) verified. Frontend (390x844 mobile viewport): Dashboard auto-opened May 2026 and renders 'Budget vs actual' card showing ₹55,000 of ₹50,000 with red '₹5,000 over budget' label and the Milk Procurement Cost per-category bar. Expenses screen: typing 'verka' in the search input (testID expenses-search) debounces for 300ms then filters list to 2 Verka Dairy rows (₹55,000, excludes Patna Electricity Board); clear-X button resets search; funnel icon (testID expenses-filter-button) opens the bottom-sheet modal (Filters title) with Category picker (expenses-filter-category), From/To DateFields, Clear all + Apply buttons. Manage screen now shows the 3rd segment 'Budgets'; it exposes the budget-month picker, per-category budget inputs (budget-input-marketing, etc.) and the budget-save button. All 7 feature items from the request have been verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Carry-over warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Cosmetic, web-only."},
+      {"component": "pointerEvents prop", "issue": "Carry-over warning: 'props.pointerEvents is deprecated. Use style.pointerEvents.' Reference: app/(tabs)/index.tsx:59."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter3_filters_budgets.py",
+    "/app/test_reports/pytest/iter3.xml"
+  ],
+  "action_items": [
+    "(Nice-to-have, non-blocking) None required - both new features are functioning as spec'd.",
+    "(Carry-over from iter2) Replace deprecated pointerEvents prop with style.pointerEvents in app/(tabs)/index.tsx:59 and migrate shadow* to boxShadow for web."
+  ],
+  "critical_code_review_comments": [
+    "server.py upsert_budget: no validation that main_category exists in CATEGORY_HIERARCHY. User could create a budget for a typo category and it would persist and show on dashboard with spent=0. Low priority - built-in UI only exposes known categories.",
+    "server.py upsert_budget: no validation that amount >= 0; a negative amount is accepted and would yield negative remaining + nonsensical pct. Consider enforcing >=0 at the Pydantic layer.",
+    "server.py dashboard budget block: pct is capped at >100 (e.g. 110%) in the response but the UI progress fill is capped at Math.min(pct, 100) which is correct. Just noted for consistency.",
+    "manage.tsx BudgetsTab save(): skips categories whose current input is empty or 0 and skips when the existing value already equals val. This means users cannot zero-out an existing budget by clearing the input - they'd have to delete the budget via DELETE endpoint (no UI for that). Minor UX gap.",
+    "manage.tsx BudgetsTab: 'Saved ✓' flag only turns on if save() runs synchronously; it does not wait for mutation success, so the checkmark appears even on failure. Low priority."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter3_filters_budgets.py (new)",
+    "/app/test_reports/pytest/iter3.xml (new)",
+    "/app/test_reports/iteration_3.json (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 iter3 tests)",
+    "frontend": "100% of the 3 new UI flows (dashboard budget-vs-actual card, expenses search+filter sheet, manage Budgets segment)"
+  },
+  "seed_data_creation": "Backend tests created TEST_Alpha/TEST_Beta/TEST_Gamma expenses in month 2026-07 + two budgets in 2026-07 (Marketing, Production Cost). All cleaned up in module teardown. No new May 2026 data created, so the user-facing demo seed (3 expenses totalling ₹67,000, Milk Procurement Cost budget 50000) is preserved except for the ₹100 payment that iteration 2 added to Verka Dairy (noted in iter2 report).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iter3 backend tests at /app/backend/tests/test_iter3_filters_budgets.py. Run with `pytest -n 0` because pytest.ini forces xdist. Module-scoped fixtures auto-cleanup. New testIDs: expenses-search, expenses-search-clear, expenses-filter-button, expenses-filter-close, expenses-filter-category, expenses-filter-from, expenses-filter-to, expenses-filter-clear, expenses-filter-apply, expenses-clear-filters, dashboard-budget-card, budget-cat-{slug}, budget-month, budget-input-{slug}, budget-save. Manage segment now has 3 options: Vendors/Categories/Budgets.",
+  "rca_of_issue": "N/A - all 2 new features working as specified."
+}

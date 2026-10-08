@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,11 +17,14 @@ import {
   useDeleteVendor,
   useMasters,
   useCreateCategory,
+  useBudgets,
+  useUpsertBudget,
 } from "@/src/api";
 import { Segmented } from "@/src/components/common";
 import { LabeledInput } from "@/src/components/LabeledInput";
 import { PickerField } from "@/src/components/PickerField";
 import { usesNativeTabs } from "@/src/navigation";
+import { currentMonth, monthLabel, formatCurrency } from "@/src/format";
 
 export default function ManageScreen() {
   const styles = useStyles();
@@ -35,12 +39,14 @@ export default function ManageScreen() {
         <Text style={styles.title}>Manage</Text>
       </View>
       <View style={styles.segmentWrap}>
-        <Segmented options={["Vendors", "Categories"]} value={tab} onChange={setTab} testID="manage-segment" />
+        <Segmented options={["Vendors", "Categories", "Budgets"]} value={tab} onChange={setTab} testID="manage-segment" />
       </View>
       {tab === "Vendors" ? (
         <VendorsTab bottom={bottomChrome} />
-      ) : (
+      ) : tab === "Categories" ? (
         <CategoriesTab bottom={bottomChrome} />
+      ) : (
+        <BudgetsTab bottom={bottomChrome} />
       )}
     </View>
   );
@@ -173,6 +179,96 @@ function CategoriesTab({ bottom }: { bottom: number }) {
   );
 }
 
+function BudgetsTab({ bottom }: { bottom: number }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
+  const [month, setMonth] = useState(currentMonth());
+  const { data: masters } = useMasters();
+  const { data: budgets } = useBudgets(month);
+  const upsert = useUpsertBudget();
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState(false);
+
+  const monthOptions = useMemo(() => {
+    const now = new Date();
+    const arr: string[] = [];
+    for (let i = -3; i <= 2; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      arr.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    return arr.reverse();
+  }, []);
+
+  useEffect(() => {
+    const map: Record<string, string> = {};
+    (budgets ?? []).forEach((b) => {
+      map[b.main_category] = String(b.amount);
+    });
+    setAmounts(map);
+  }, [budgets, month]);
+
+  const categories = masters?.categories.map((c) => c.main_category) ?? [];
+  const totalBudget = categories.reduce((s, c) => s + (parseFloat(amounts[c] || "0") || 0), 0);
+
+  const save = () => {
+    categories.forEach((cat) => {
+      const val = parseFloat(amounts[cat] || "");
+      const existing = (budgets ?? []).find((b) => b.main_category === cat);
+      if (!isNaN(val) && val > 0 && (!existing || existing.amount !== val)) {
+        upsert.mutate({ month, main_category: cat, amount: val });
+      }
+    });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <KeyboardAwareScrollView
+      contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottom + 40, paddingTop: 8 }}
+      bottomOffset={16}
+    >
+      <PickerField
+        label="Budget month"
+        value={monthLabel(month)}
+        options={monthOptions.map(monthLabel)}
+        onChange={(label) => {
+          const m = monthOptions.find((x) => monthLabel(x) === label);
+          if (m) setMonth(m);
+        }}
+        testID="budget-month"
+      />
+
+      <View style={styles.budgetTotalCard}>
+        <Text style={styles.budgetTotalLabel}>Total monthly budget</Text>
+        <Text style={styles.budgetTotalValue}>{formatCurrency(totalBudget)}</Text>
+      </View>
+
+      <Text style={styles.sectionLabel}>Set a budget per category</Text>
+      {categories.map((cat) => (
+        <View key={cat} style={styles.budgetRow}>
+          <Text style={styles.budgetCat} numberOfLines={2}>{cat}</Text>
+          <View style={styles.budgetInputWrap}>
+            <Text style={styles.budgetPrefix}>₹</Text>
+            <TextInput
+              style={styles.budgetInput}
+              value={amounts[cat] || ""}
+              onChangeText={(t) => setAmounts((p) => ({ ...p, [cat]: t }))}
+              keyboardType="decimal-pad"
+              placeholder="0"
+              placeholderTextColor={colors.muted}
+              testID={`budget-input-${cat.replace(/\s+/g, "-").toLowerCase()}`}
+            />
+          </View>
+        </View>
+      ))}
+
+      <Pressable style={styles.addBtn} onPress={save} disabled={upsert.isPending} testID="budget-save">
+        <Text style={styles.addBtnText}>{saved ? "Saved ✓" : upsert.isPending ? "Saving…" : "Save budgets"}</Text>
+      </Pressable>
+    </KeyboardAwareScrollView>
+  );
+}
+
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 8 },
@@ -223,4 +319,33 @@ const useStyles = makeStyles((colors) => ({
   },
   builtinMain: { fontFamily: fonts.semibold, fontSize: 14, color: colors.onSurface },
   builtinSub: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 4 },
+  budgetTotalCard: {
+    backgroundColor: colors.brandPrimary,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  budgetTotalLabel: { fontFamily: fonts.medium, fontSize: 13, color: colors.onBrandPrimary, opacity: 0.85 },
+  budgetTotalValue: { fontFamily: fonts.extrabold, fontSize: 26, color: colors.onBrandPrimary, marginTop: 4 },
+  budgetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginBottom: 8,
+    gap: 12,
+  },
+  budgetCat: { flex: 1, fontFamily: fonts.medium, fontSize: 14, color: colors.onSurface },
+  budgetInputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surfaceTertiary,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    minWidth: 110,
+  },
+  budgetPrefix: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onSurfaceTertiary, marginRight: 2 },
+  budgetInput: { flex: 1, fontFamily: fonts.semibold, fontSize: 15, color: colors.onSurface, paddingVertical: 10, textAlign: "right" },
 }));

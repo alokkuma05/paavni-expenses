@@ -125,6 +125,53 @@ export default function DashboardScreen() {
             </View>
           </SectionCard>
 
+          {data.budget?.has_budgets && month ? (
+            <SectionCard title="Budget vs actual" testID="dashboard-budget-card">
+              {(() => {
+                const over = data.budget.total_spent > data.budget.total_budget;
+                const pct = data.budget.total_budget > 0
+                  ? Math.min((data.budget.total_spent / data.budget.total_budget) * 100, 100)
+                  : 0;
+                return (
+                  <>
+                    <View style={styles.budgetTopRow}>
+                      <Text style={styles.budgetSpent}>{formatCurrency(data.budget.total_spent)}</Text>
+                      <Text style={styles.budgetOf}>of {formatCurrency(data.budget.total_budget)}</Text>
+                    </View>
+                    <View style={styles.progressTrack}>
+                      <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: over ? colors.error : colors.brandPrimary }]} />
+                    </View>
+                    <Text style={[styles.budgetNote, { color: over ? colors.error : colors.muted }]}>
+                      {over
+                        ? `${formatCurrency(data.budget.total_spent - data.budget.total_budget)} over budget`
+                        : `${formatCurrency(data.budget.total_budget - data.budget.total_spent)} remaining`}
+                    </Text>
+                  </>
+                );
+              })()}
+
+              <View style={styles.budgetList}>
+                {data.budget.by_category.map((b) => {
+                  const over = b.spent > b.budget;
+                  const pct = Math.min(b.pct, 100);
+                  return (
+                    <View key={b.category} style={styles.budgetItem} testID={`budget-cat-${b.category.replace(/\s+/g, "-").toLowerCase()}`}>
+                      <View style={styles.barHeader}>
+                        <Text style={styles.barLabel} numberOfLines={1}>{b.category}</Text>
+                        <Text style={[styles.barValue, over && { color: colors.error }]}>
+                          {formatCompact(b.spent)} / {formatCompact(b.budget)}
+                        </Text>
+                      </View>
+                      <View style={styles.barTrack}>
+                        <View style={[styles.barFill, { width: `${Math.max(pct, 2)}%`, backgroundColor: over ? colors.error : colors.brandSecondary }]} />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </SectionCard>
+          ) : null}
+
           {pieData.length > 0 && (
             <SectionCard title="By category">
               <View style={styles.pieRow}>
@@ -228,6 +275,12 @@ const useStyles = makeStyles((colors) => ({
   progressMeta: { flexDirection: "row", justifyContent: "space-between", marginTop: 10 },
   progressText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.onSurface },
   progressTextMuted: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },
+  budgetTopRow: { flexDirection: "row", alignItems: "baseline", gap: 8, marginBottom: 10 },
+  budgetSpent: { fontFamily: fonts.extrabold, fontSize: 24, color: colors.onSurface },
+  budgetOf: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },
+  budgetNote: { fontFamily: fonts.semibold, fontSize: 13, marginTop: 10 },
+  budgetList: { marginTop: 16, borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: 14 },
+  budgetItem: { marginBottom: 14 },
   pieRow: { flexDirection: "row", alignItems: "center" },
   pieCenterLabel: { fontFamily: fonts.medium, fontSize: 11, color: colors.muted },
   pieCenterValue: { fontFamily: fonts.bold, fontSize: 15, color: colors.onSurface },

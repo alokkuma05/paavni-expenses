@@ -41,11 +41,15 @@ Build a mobile app for expenses recording and payment recording. User uploaded a
 - [x] **Excel Export** — `GET /api/export?month=` returns styled .xlsx (header, rows, TOTAL); export icon on Expenses header; share on native / download on web.
 - [x] **Product Line** — product_line picker on form (served from masters), persists; included in Excel export.
 
+### 2026-06 (Iteration 3 — Smart Filters + Budgets)
+- [x] **Smart Filters** — Expenses: debounced text search (vendor/category/head/product/remarks), filter bottom-sheet with category + date-range (from/to), active-filter bar. Backend `/api/expenses` gained `q`, `date_from`, `date_to`. Tested 13/13.
+- [x] **Budget Tracking** — `budgets` collection + upsert/list/delete endpoints; Manage "Budgets" segment (month picker + per-category amounts); Dashboard "Budget vs actual" card (over-budget in red). Dashboard returns a `budget` block per month.
+
 ## Backlog / Remaining
-- P2: Export share on native real-device QA (works via expo-sharing; verify after build).
+- P2: UI to zero-out/remove an existing budget (delete endpoint exists, no button yet).
+- P2: Budget amount validation (>=0) on backend.
 - P2: Vendor dues → tap to view that vendor's bills; vendor statement export.
-- P2: Budget vs actual, cost-centre reports, GST/TDS compliance summary, by-product dashboard breakdown.
-- P2: Search across expenses; date-range custom filters.
+- P2: Cost-centre reports, GST/TDS compliance summary, by-product dashboard breakdown.
 
 ## Next Tasks
 - By-product cost breakdown on dashboard (product_line now captured).

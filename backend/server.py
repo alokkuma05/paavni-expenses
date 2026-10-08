@@ -122,6 +122,16 @@ class Category(CategoryCreate):
     custom: bool = True
     created_at: str = Field(default_factory=now_iso)
 
+class BudgetCreate(BaseModel):
+    month: str  # YYYY-MM
+    main_category: str
+    amount: float
+
+class Budget(BudgetCreate):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
+
 class ExpenseBase(BaseModel):
     date: str  # YYYY-MM-DD
     vendor: str
@@ -301,6 +311,9 @@ async def list_expenses(
     payment_status: Optional[str] = None,
     main_category: Optional[str] = None,
     vendor: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    q: Optional[str] = None,
 ):
     query = {"deleted_at": None}
     if month:
@@ -311,6 +324,23 @@ async def list_expenses(
         query["main_category"] = main_category
     if vendor:
         query["vendor"] = vendor
+    if date_from or date_to:
+        date_q = {}
+        if date_from:
+            date_q["$gte"] = date_from
+        if date_to:
+            date_q["$lte"] = date_to
+        query["date"] = date_q
+    if q:
+        regex = {"$regex": q, "$options": "i"}
+        query["$or"] = [
+            {"vendor": regex},
+            {"main_category": regex},
+            {"sub_category": regex},
+            {"detailed_head": regex},
+            {"product_line": regex},
+            {"remarks": regex},
+        ]
     docs = await db.expenses.find(query).sort("date", -1).to_list(2000)
     out = []
     for d in docs:
@@ -423,6 +453,35 @@ async def dashboard(month: Optional[str] = None):
     months = await db.expenses.distinct("month", {"deleted_at": None})
     months = sorted([m for m in months if m], reverse=True)
 
+    # Budget vs actual (only meaningful for a specific month)
+    budget_block = {"has_budgets": False, "total_budget": 0.0, "total_spent": 0.0, "by_category": []}
+    if month:
+        bdocs = await db.budgets.find({"month": month, "deleted_at": None}).to_list(1000)
+        if bdocs:
+            b_list = []
+            total_budget = 0.0
+            total_spent_budgeted = 0.0
+            for b in bdocs:
+                cat = b["main_category"]
+                amt = float(b.get("amount") or 0)
+                spent = round(float(by_category.get(cat, 0.0)), 2)
+                total_budget += amt
+                total_spent_budgeted += spent
+                b_list.append({
+                    "category": cat,
+                    "budget": round(amt, 2),
+                    "spent": spent,
+                    "remaining": round(amt - spent, 2),
+                    "pct": round(spent / amt * 100, 1) if amt > 0 else 0.0,
+                })
+            b_list.sort(key=lambda x: x["pct"], reverse=True)
+            budget_block = {
+                "has_budgets": True,
+                "total_budget": round(total_budget, 2),
+                "total_spent": round(total_spent_budgeted, 2),
+                "by_category": b_list,
+            }
+
     return {
         "month": month,
         "total": round(total, 2),
@@ -432,7 +491,50 @@ async def dashboard(month: Optional[str] = None):
         "by_category": cat_list,
         "by_status": status_list,
         "months": months,
+        "budget": budget_block,
     }
+
+
+# ---------------------------------------------------------------------------
+# Budgets
+# ---------------------------------------------------------------------------
+@api_router.get("/budgets", response_model=List[Budget])
+async def list_budgets(month: Optional[str] = None):
+    query = {"deleted_at": None}
+    if month:
+        query["month"] = month
+    docs = await db.budgets.find(query).to_list(1000)
+    out = []
+    for d in docs:
+        d.pop("_id", None)
+        out.append(Budget(**d))
+    return out
+
+@api_router.post("/budgets", response_model=Budget)
+async def upsert_budget(payload: BudgetCreate):
+    existing = await db.budgets.find_one({
+        "month": payload.month,
+        "main_category": payload.main_category,
+        "deleted_at": None,
+    })
+    if existing:
+        await db.budgets.update_one(
+            {"id": existing["id"]},
+            {"$set": {"amount": float(payload.amount), "updated_at": now_iso()}},
+        )
+        updated = await db.budgets.find_one({"id": existing["id"]})
+        updated.pop("_id", None)
+        return Budget(**updated)
+    budget = Budget(**payload.dict())
+    doc = budget.dict()
+    doc["deleted_at"] = None
+    await db.budgets.insert_one(doc)
+    return budget
+
+@api_router.delete("/budgets/{budget_id}")
+async def delete_budget(budget_id: str):
+    await db.budgets.update_one({"id": budget_id}, {"$set": {"deleted_at": now_iso()}})
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
