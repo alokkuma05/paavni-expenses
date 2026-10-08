@@ -1,0 +1,44 @@
+{
+  "summary": "Tested the 4 new features (Payment Ledger, Vendor Dues, Excel Export, Product Line). Backend: 10/10 new pytest cases pass covering (a) empty ledger on unpaid create, (b) initial-payment seeding entry labelled 'Initial payment', (c) record_payment appending + status transitions Unpaid->Partly Paid->Paid + accurate accumulation, (d) 400 on amount <= 0 (zero + negative), (e) 404 on unknown id, (f) /vendors/dues shape (vendor/total/paid/outstanding/bills/open_bills), sort desc by outstanding, correct total_outstanding, (g) /export?month=YYYY-MM returns valid xlsx with correct content-type + attachment disposition + Product Line column populated + TOTAL row, (h) product_line persists on PUT and reflects in GET. Frontend (mobile viewport 390x844): Dues tab (4th tab) renders green hero 'Total outstanding ₹51,000' + Verka Dairy vendor card with progress bar and '2 open of 2 bills'; Expenses tab shows the download icon (testID expenses-export); opening the Verka Dairy edit screen shows the Product line picker preselected to 'Paneer' and the Payment Ledger section with Amount/Paid/Outstanding, Partly Paid badge, 1 existing ledger item, and a 'Record payment' button; tapping it opens the bottom-sheet modal with Amount input, 'Pay full outstanding (₹6,000)' chip, Payment mode UPI, Payment date; submitting ₹100 closed the modal, ledger grew from 1 to 2 items, Paid went 4000->4100, Outstanding 6000->5900. Export API verified via in-browser fetch too: 200 OK, content-type application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, attachment disposition.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props (library)", "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Still present from iteration 1; cosmetic, web-only."},
+      {"component": "pointerEvents prop", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents.' Still present from iteration 1 (app/(tabs)/index.tsx:59)."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/new_features.xml"
+  ],
+  "action_items": [
+    "(Carry-over, nice-to-have) Replace `pointerEvents=\"box-none\"` prop with `style={{ pointerEvents: 'box-none' }}` in app/(tabs)/index.tsx:59.",
+    "(Note) After testing, the Verka Dairy May-2026 seed expense now has 2 ledger entries (₹4,000 + ₹100 added by this run), paid_amount=4100, outstanding=5900. Reset seed if you want to restore the single-payment demo state."
+  ],
+  "critical_code_review_comments": [
+    "server.py record_payment: payment_date defaults to today's UTC date when not supplied; also mutates the expense's payment_date on every call. Acceptable, but a part-payment with past date will overwrite the stored payment_date each time. Consider only setting payment_date when outstanding becomes 0, or leaving it alone.",
+    "server.py _derive: status reconciliation runs unconditionally except for the 3 special statuses. If user manually sets 'Partly Paid' with paid_amount==0, it will be forced to 'Unpaid'. Working as intended per spec, just noting.",
+    "/api/vendors/dues iterates all expenses (deleted_at:null) and aggregates in Python. Fine for current scale (<5000 docs). Consider a MongoDB $group aggregation if volume grows.",
+    "export endpoint streams the entire workbook from memory; OK for a month. For 'all time' at tens of thousands of rows this will spike memory. Low priority."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features.py (new)",
+    "/app/test_reports/iteration_2.json (new)",
+    "/app/test_reports/pytest/new_features.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (10/10 new tests)",
+    "frontend": "100% of the 4 new feature flows (dues tab render, expenses export button present, edit form ledger + product line picker, record payment modal open+submit, ledger updates)"
+  },
+  "seed_data_creation": "Created TEST_Ledger_A and TEST_Ledger_B expenses during backend tests, both cleaned up in module teardown. During UI test, added one real ₹100 payment to the existing Verka Dairy expense (not deleted - see action_items note).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend tests for new features live at /app/backend/tests/test_new_features.py. They use the module-scoped `created` fixture that deletes test expenses on teardown. Run with `pytest -n 0` because pytest.ini forces xdist by default. UI testIDs for new features: dues-screen, dues-total-card, dues-empty, dues-vendor-{slug}, expenses-export, form-product-line, open-record-payment, ledger-item-{id}, record-payment-amount, record-payment-full, record-payment-mode, record-payment-date, record-payment-submit, record-payment-close.",
+  "rca_of_issue": "N/A - all 4 new features working as specified."
+}

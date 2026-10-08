@@ -1,7 +1,7 @@
 import React from "react";
 import { Platform } from "react-native";
 import { Tabs } from "expo-router";
-import { ChartPieSlice, Receipt, SlidersHorizontal } from "phosphor-react-native";
+import { ChartPieSlice, Receipt, SlidersHorizontal, Wallet } from "phosphor-react-native";
 import { useTheme, fonts } from "@/src/theme";
 import { usesNativeTabs } from "@/src/navigation";
 
@@ -16,6 +16,10 @@ function NativeTabLayout() {
       <NativeTabs.Trigger name="expenses">
         <NativeTabs.Trigger.Icon sf="list.bullet.rectangle.fill" />
         <NativeTabs.Trigger.Label>Expenses</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="dues">
+        <NativeTabs.Trigger.Icon sf="indianrupeesign.circle.fill" />
+        <NativeTabs.Trigger.Label>Dues</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="manage">
         <NativeTabs.Trigger.Icon sf="slider.horizontal.3" />
@@ -60,6 +64,15 @@ export default function TabsLayout() {
           title: "Expenses",
           tabBarIcon: ({ color, focused }) => (
             <Receipt size={24} color={color} weight={focused ? "fill" : "regular"} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="dues"
+        options={{
+          title: "Dues",
+          tabBarIcon: ({ color, focused }) => (
+            <Wallet size={24} color={color} weight={focused ? "fill" : "regular"} />
           ),
         }}
       />

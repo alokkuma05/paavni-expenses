@@ -3,6 +3,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
 const API = `${BASE}/api`;
 
+export type PaymentEntry = {
+  id: string;
+  amount: number;
+  mode?: string | null;
+  date: string;
+  note?: string | null;
+  created_at: string;
+};
+
 export type Expense = {
   id: string;
   date: string;
@@ -16,6 +25,7 @@ export type Expense = {
   payment_mode?: string | null;
   paid_amount: number;
   outstanding: number;
+  payments?: PaymentEntry[];
   voucher_no?: string | null;
   cost_centre?: string | null;
   product_line?: string | null;
@@ -108,6 +118,7 @@ export function useExpense(id?: string) {
 function invalidateExpenses(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["expenses"] });
   qc.invalidateQueries({ queryKey: ["dashboard"] });
+  qc.invalidateQueries({ queryKey: ["vendor-dues"] });
 }
 
 export function useCreateExpense() {
@@ -142,20 +153,42 @@ export function useDeleteExpense() {
 export function useRecordPayment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { id: string; paid_amount: number; payment_mode?: string; payment_date?: string }) =>
+    mutationFn: (args: { id: string; paid_amount: number; payment_mode?: string; payment_date?: string; note?: string }) =>
       req<Expense>(`/expenses/${args.id}/payment`, {
         method: "POST",
         body: JSON.stringify({
           paid_amount: args.paid_amount,
           payment_mode: args.payment_mode,
           payment_date: args.payment_date,
+          note: args.note,
         }),
       }),
     onSuccess: (_d, vars) => {
       invalidateExpenses(qc);
       qc.invalidateQueries({ queryKey: ["expense", vars.id] });
+      qc.invalidateQueries({ queryKey: ["vendor-dues"] });
     },
   });
+}
+
+// ---- Vendor dues ----
+export type VendorDue = {
+  vendor: string;
+  total: number;
+  paid: number;
+  outstanding: number;
+  bills: number;
+  open_bills: number;
+};
+export type VendorDues = { vendors: VendorDue[]; total_outstanding: number };
+
+export function useVendorDues() {
+  return useQuery({ queryKey: ["vendor-dues"], queryFn: () => req<VendorDues>("/vendors/dues") });
+}
+
+// ---- Export ----
+export function exportUrl(month: string | null): string {
+  return `${API}/export${month ? `?month=${month}` : ""}`;
 }
 
 // ---- Vendors ----

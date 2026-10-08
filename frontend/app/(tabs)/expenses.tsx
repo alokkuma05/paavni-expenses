@@ -9,11 +9,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { DownloadSimple } from "phosphor-react-native";
 import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { useExpenses, Expense } from "@/src/api";
 import { formatCurrency, formatDate, currentMonth, monthLabel } from "@/src/format";
 import { FAB, EmptyState, categoryColor } from "@/src/components/common";
 import { StatusBadge } from "@/src/components/StatusBadge";
+import { exportMonth } from "@/src/export";
 import { usesNativeTabs } from "@/src/navigation";
 
 const STATUS_FILTERS = ["All", "Unpaid", "Partly Paid", "Paid"];
@@ -40,13 +42,23 @@ export default function ExpensesScreen() {
     <View style={[styles.root, { paddingTop: insets.top }]} testID="expenses-screen">
       <View style={styles.header}>
         <Text style={styles.title}>Expenses</Text>
-        <Pressable
-          style={styles.scopeBtn}
-          onPress={() => setScope((s) => (s === "all" ? "month" : "all"))}
-          testID="expenses-scope-toggle"
-        >
-          <Text style={styles.scopeText}>{scope === "all" ? "All time" : monthLabel(currentMonth())}</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            style={styles.iconBtn}
+            onPress={() => exportMonth(month).catch(() => {})}
+            disabled={!data || data.length === 0}
+            testID="expenses-export"
+          >
+            <DownloadSimple size={20} color={colors.brandPrimary} weight="bold" />
+          </Pressable>
+          <Pressable
+            style={styles.scopeBtn}
+            onPress={() => setScope((s) => (s === "all" ? "month" : "all"))}
+            testID="expenses-scope-toggle"
+          >
+            <Text style={styles.scopeText}>{scope === "all" ? "All time" : monthLabel(currentMonth())}</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.chipRowWrap}>
@@ -143,6 +155,15 @@ const useStyles = makeStyles((colors) => ({
     paddingBottom: 8,
   },
   title: { fontFamily: fonts.extrabold, fontSize: 28, color: colors.onSurface },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.brandTertiary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   scopeBtn: {
     backgroundColor: colors.surfaceTertiary,
     paddingHorizontal: 14,

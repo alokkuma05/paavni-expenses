@@ -1,14 +1,18 @@
 from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import io
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
 from datetime import datetime, timezone
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
 
 
 ROOT_DIR = Path(__file__).parent
@@ -145,10 +149,19 @@ class ExpenseBase(BaseModel):
 class ExpenseCreate(ExpenseBase):
     pass
 
+class PaymentEntry(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    amount: float
+    mode: Optional[str] = None
+    date: str
+    note: Optional[str] = None
+    created_at: str = Field(default_factory=now_iso)
+
 class Expense(ExpenseBase):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     month: str = ""
     outstanding: float = 0.0
+    payments: List[PaymentEntry] = []
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
     deleted_at: Optional[str] = None
@@ -157,6 +170,7 @@ class PaymentRecord(BaseModel):
     paid_amount: float
     payment_mode: Optional[str] = None
     payment_date: Optional[str] = None
+    note: Optional[str] = None
 
 
 def _derive(expense: dict) -> dict:
@@ -267,6 +281,14 @@ async def create_expense(payload: ExpenseCreate):
     expense = Expense(**payload.dict())
     doc = expense.dict()
     doc = _derive(doc)
+    # Seed the payment ledger if an initial amount was already paid.
+    if float(doc.get("paid_amount") or 0) > 0:
+        doc["payments"] = [PaymentEntry(
+            amount=float(doc["paid_amount"]),
+            mode=doc.get("payment_mode"),
+            date=doc.get("payment_date") or doc.get("date"),
+            note="Initial payment",
+        ).dict()]
     doc["deleted_at"] = None
     await db.expenses.insert_one(doc)
     saved = await db.expenses.find_one({"id": expense.id})
@@ -328,20 +350,32 @@ async def record_payment(expense_id: str, payload: PaymentRecord):
     existing = await db.expenses.find_one({"id": expense_id, "deleted_at": None})
     if not existing:
         raise HTTPException(status_code=404, detail="Expense not found")
+    if float(payload.paid_amount) <= 0:
+        raise HTTPException(status_code=400, detail="Payment amount must be greater than zero")
+    pay_date = payload.payment_date or now_iso()[:10]
+    entry = PaymentEntry(
+        amount=float(payload.paid_amount),
+        mode=payload.payment_mode,
+        date=pay_date,
+        note=payload.note,
+    ).dict()
     new_paid = round(float(existing.get("paid_amount") or 0) + float(payload.paid_amount), 2)
     update = {
         "paid_amount": new_paid,
         "updated_at": now_iso(),
+        "payment_date": pay_date,
     }
     if payload.payment_mode:
         update["payment_mode"] = payload.payment_mode
-    update["payment_date"] = payload.payment_date or now_iso()[:10]
     merged = {**existing, **update}
     merged = _derive(merged)
     update["month"] = merged["month"]
     update["outstanding"] = merged["outstanding"]
     update["payment_status"] = merged["payment_status"]
-    await db.expenses.update_one({"id": expense_id}, {"$set": update})
+    await db.expenses.update_one(
+        {"id": expense_id},
+        {"$set": update, "$push": {"payments": entry}},
+    )
     updated = await db.expenses.find_one({"id": expense_id})
     updated.pop("_id", None)
     return Expense(**updated)
@@ -399,6 +433,107 @@ async def dashboard(month: Optional[str] = None):
         "by_status": status_list,
         "months": months,
     }
+
+
+# ---------------------------------------------------------------------------
+# Vendor dues (vendor-wise outstanding)
+# ---------------------------------------------------------------------------
+@api_router.get("/vendors/dues")
+async def vendor_dues():
+    docs = await db.expenses.find({"deleted_at": None}).to_list(5000)
+    agg = {}
+    for d in docs:
+        v = d.get("vendor") or "Unknown"
+        e = agg.setdefault(v, {"vendor": v, "total": 0.0, "paid": 0.0, "outstanding": 0.0, "bills": 0, "open_bills": 0})
+        amt = float(d.get("amount") or 0)
+        paid = float(d.get("paid_amount") or 0)
+        out = float(d.get("outstanding") or 0)
+        e["total"] += amt
+        e["paid"] += paid
+        e["outstanding"] += out
+        e["bills"] += 1
+        if out > 0:
+            e["open_bills"] += 1
+    result = [
+        {**v, "total": round(v["total"], 2), "paid": round(v["paid"], 2), "outstanding": round(v["outstanding"], 2)}
+        for v in agg.values()
+    ]
+    result.sort(key=lambda x: x["outstanding"], reverse=True)
+    total_outstanding = round(sum(v["outstanding"] for v in result), 2)
+    return {"vendors": result, "total_outstanding": total_outstanding}
+
+
+# ---------------------------------------------------------------------------
+# Excel export
+# ---------------------------------------------------------------------------
+@api_router.get("/export")
+async def export_expenses(month: Optional[str] = None):
+    query = {"deleted_at": None}
+    if month:
+        query["month"] = month
+    docs = await db.expenses.find(query).sort("date", 1).to_list(5000)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = (month or "All")[:31]
+
+    headers = [
+        "Date", "Vendor", "Main Category", "Sub Category", "Detailed Head",
+        "Cost Centre", "Product Line", "Taxable", "GST %", "GST Amount",
+        "TDS", "Amount", "Paid", "Outstanding", "Status", "Payment Mode", "Remarks",
+    ]
+    ws.append(headers)
+    header_fill = PatternFill(start_color="2A5C43", end_color="2A5C43", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    total_amt = total_paid = total_out = 0.0
+    for d in docs:
+        total_amt += float(d.get("amount") or 0)
+        total_paid += float(d.get("paid_amount") or 0)
+        total_out += float(d.get("outstanding") or 0)
+        ws.append([
+            d.get("date", ""),
+            d.get("vendor", ""),
+            d.get("main_category", ""),
+            d.get("sub_category", "") or "",
+            d.get("detailed_head", "") or "",
+            d.get("cost_centre", "") or "",
+            d.get("product_line", "") or "",
+            d.get("taxable_amount") or "",
+            d.get("gst_percent") or "",
+            d.get("gst_amount") or "",
+            d.get("tds") or "",
+            float(d.get("amount") or 0),
+            float(d.get("paid_amount") or 0),
+            float(d.get("outstanding") or 0),
+            d.get("payment_status", ""),
+            d.get("payment_mode", "") or "",
+            d.get("remarks", "") or "",
+        ])
+
+    total_row = ["", "", "", "", "", "", "", "", "", "", "TOTAL",
+                 round(total_amt, 2), round(total_paid, 2), round(total_out, 2), "", "", ""]
+    ws.append(total_row)
+    for cell in ws[ws.max_row]:
+        cell.font = Font(bold=True)
+
+    widths = [12, 22, 20, 18, 22, 16, 16, 12, 8, 12, 10, 12, 12, 12, 12, 14, 24]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fname = f"paavni-expenses-{month or 'all'}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 app.include_router(api_router)

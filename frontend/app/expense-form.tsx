@@ -27,7 +27,9 @@ import { LabeledInput } from "@/src/components/LabeledInput";
 import { PickerField } from "@/src/components/PickerField";
 import { DateField } from "@/src/components/DateField";
 import { SectionCard } from "@/src/components/common";
-import { toDateInput, formatCurrency } from "@/src/format";
+import { StatusBadge } from "@/src/components/StatusBadge";
+import { RecordPaymentModal } from "@/src/components/RecordPaymentModal";
+import { toDateInput, formatCurrency, formatDate } from "@/src/format";
 
 export default function ExpenseFormScreen() {
   const styles = useStyles();
@@ -56,12 +58,14 @@ export default function ExpenseFormScreen() {
   const [paymentMode, setPaymentMode] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
   const [costCentre, setCostCentre] = useState("");
+  const [productLine, setProductLine] = useState("");
   const [gstOn, setGstOn] = useState(false);
   const [taxable, setTaxable] = useState("");
   const [gstPercent, setGstPercent] = useState("");
   const [tds, setTds] = useState("");
   const [remarks, setRemarks] = useState("");
   const [error, setError] = useState("");
+  const [showPayModal, setShowPayModal] = useState(false);
 
   useEffect(() => {
     if (existing) {
@@ -75,6 +79,7 @@ export default function ExpenseFormScreen() {
       setPaymentMode(existing.payment_mode || "");
       setPaidAmount(existing.paid_amount ? String(existing.paid_amount) : "");
       setCostCentre(existing.cost_centre || "");
+      setProductLine(existing.product_line || "");
       setGstOn(!!existing.gst_available);
       setTaxable(existing.taxable_amount ? String(existing.taxable_amount) : "");
       setGstPercent(existing.gst_percent ? String(existing.gst_percent) : "");
@@ -126,6 +131,7 @@ export default function ExpenseFormScreen() {
       payment_mode: paymentMode || null,
       paid_amount: paid,
       cost_centre: costCentre || null,
+      product_line: productLine || null,
       gst_available: gstOn,
       taxable_amount: gstOn ? parseFloat(taxable || "0") : null,
       gst_percent: gstOn ? parseFloat(gstPercent || "0") : null,
@@ -236,6 +242,15 @@ export default function ExpenseFormScreen() {
             placeholder="Select detailed head"
             testID="form-detailed-head"
           />
+          <PickerField
+            label="Product line (optional)"
+            value={productLine}
+            options={masters?.product_lines ?? []}
+            onChange={setProductLine}
+            searchable
+            placeholder="Select product line"
+            testID="form-product-line"
+          />
         </SectionCard>
 
         <SectionCard title="Amount">
@@ -267,37 +282,86 @@ export default function ExpenseFormScreen() {
           <LabeledInput label="TDS (optional)" value={tds} onChangeText={setTds} prefix="₹" keyboardType="decimal-pad" placeholder="0" testID="form-tds" />
         </SectionCard>
 
-        <SectionCard title="Payment">
-          <Text style={styles.fieldLabel}>Status</Text>
-          <View style={styles.statusWrap}>
-            {["Unpaid", "Partly Paid", "Paid"].map((s) => {
-              const active = s === paymentStatus;
-              return (
-                <Pressable
-                  key={s}
-                  onPress={() => setPaymentStatus(s)}
-                  style={[styles.statusChip, active && styles.statusChipActive]}
-                  testID={`form-status-${s.replace(/\s+/g, "-").toLowerCase()}`}
-                >
-                  <Text style={[styles.statusChipText, active && styles.statusChipTextActive]}>{s}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          {paymentStatus === "Partly Paid" ? (
-            <LabeledInput label="Amount paid" value={paidAmount} onChangeText={setPaidAmount} prefix="₹" keyboardType="decimal-pad" placeholder="0" testID="form-paid-amount" />
-          ) : null}
-          {paymentStatus !== "Unpaid" ? (
-            <PickerField
-              label="Payment mode"
-              value={paymentMode}
-              options={masters?.payment_modes ?? []}
-              onChange={setPaymentMode}
-              placeholder="Select mode"
-              testID="form-payment-mode"
-            />
-          ) : null}
-        </SectionCard>
+        {isEdit && existing ? (
+          <SectionCard title="Payment ledger">
+            <View style={styles.ledgerSummary}>
+              <View style={styles.ledgerCol}>
+                <Text style={styles.ledgerColLabel}>Amount</Text>
+                <Text style={styles.ledgerColValue}>{formatCurrency(existing.amount)}</Text>
+              </View>
+              <View style={styles.ledgerCol}>
+                <Text style={styles.ledgerColLabel}>Paid</Text>
+                <Text style={[styles.ledgerColValue, { color: colors.success }]}>{formatCurrency(existing.paid_amount)}</Text>
+              </View>
+              <View style={styles.ledgerCol}>
+                <Text style={styles.ledgerColLabel}>Outstanding</Text>
+                <Text style={[styles.ledgerColValue, { color: existing.outstanding > 0 ? colors.error : colors.onSurface }]}>
+                  {formatCurrency(existing.outstanding)}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.ledgerStatusRow}>
+              <StatusBadge status={existing.payment_status} />
+            </View>
+
+            {existing.payments && existing.payments.length > 0 ? (
+              <View style={styles.ledgerList}>
+                {existing.payments.map((p) => (
+                  <View key={p.id} style={styles.ledgerItem} testID={`ledger-item-${p.id}`}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.ledgerItemAmount}>{formatCurrency(p.amount)}</Text>
+                      <Text style={styles.ledgerItemMeta}>
+                        {formatDate(p.date)}
+                        {p.mode ? ` · ${p.mode}` : ""}
+                        {p.note ? ` · ${p.note}` : ""}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.ledgerEmpty}>No payments recorded yet.</Text>
+            )}
+
+            {existing.outstanding > 0 ? (
+              <Pressable style={styles.recordBtn} onPress={() => setShowPayModal(true)} testID="open-record-payment">
+                <Text style={styles.recordBtnText}>Record payment</Text>
+              </Pressable>
+            ) : null}
+          </SectionCard>
+        ) : (
+          <SectionCard title="Payment">
+            <Text style={styles.fieldLabel}>Status</Text>
+            <View style={styles.statusWrap}>
+              {["Unpaid", "Partly Paid", "Paid"].map((s) => {
+                const active = s === paymentStatus;
+                return (
+                  <Pressable
+                    key={s}
+                    onPress={() => setPaymentStatus(s)}
+                    style={[styles.statusChip, active && styles.statusChipActive]}
+                    testID={`form-status-${s.replace(/\s+/g, "-").toLowerCase()}`}
+                  >
+                    <Text style={[styles.statusChipText, active && styles.statusChipTextActive]}>{s}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {paymentStatus === "Partly Paid" ? (
+              <LabeledInput label="Amount paid" value={paidAmount} onChangeText={setPaidAmount} prefix="₹" keyboardType="decimal-pad" placeholder="0" testID="form-paid-amount" />
+            ) : null}
+            {paymentStatus !== "Unpaid" ? (
+              <PickerField
+                label="Payment mode"
+                value={paymentMode}
+                options={masters?.payment_modes ?? []}
+                onChange={setPaymentMode}
+                placeholder="Select mode"
+                testID="form-payment-mode"
+              />
+            ) : null}
+          </SectionCard>
+        )}
 
         <SectionCard title="Notes">
           <LabeledInput label="Remarks (optional)" value={remarks} onChangeText={setRemarks} multiline placeholder="Add a note…" testID="form-remarks" />
@@ -317,6 +381,10 @@ export default function ExpenseFormScreen() {
           </Pressable>
         </View>
       </KeyboardStickyView>
+
+      {isEdit && existing ? (
+        <RecordPaymentModal expense={existing} visible={showPayModal} onClose={() => setShowPayModal(false)} />
+      ) : null}
     </View>
   );
 }
@@ -351,6 +419,30 @@ const useStyles = makeStyles((colors) => ({
   statusChipActive: { backgroundColor: colors.brandPrimary },
   statusChipText: { fontFamily: fonts.medium, fontSize: 13, color: colors.onSurfaceTertiary },
   statusChipTextActive: { color: colors.onBrandPrimary, fontFamily: fonts.semibold },
+  ledgerSummary: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
+  ledgerCol: { flex: 1 },
+  ledgerColLabel: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
+  ledgerColValue: { fontFamily: fonts.bold, fontSize: 16, color: colors.onSurface, marginTop: 4 },
+  ledgerStatusRow: { marginBottom: 12 },
+  ledgerList: { borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: 4 },
+  ledgerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  ledgerItemAmount: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onSurface },
+  ledgerItemMeta: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 2 },
+  ledgerEmpty: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, paddingVertical: 8 },
+  recordBtn: {
+    marginTop: 14,
+    backgroundColor: colors.brandTertiary,
+    borderRadius: 10,
+    paddingVertical: 13,
+    alignItems: "center",
+  },
+  recordBtnText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onBrandTertiary },
   error: { fontFamily: fonts.medium, fontSize: 14, color: colors.error, textAlign: "center", marginTop: 4 },
   footer: {
     paddingHorizontal: 20,
