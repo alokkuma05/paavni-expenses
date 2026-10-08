@@ -1,6 +1,8 @@
 import React from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import { CaretRight } from "phosphor-react-native";
 import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { useVendorDues } from "@/src/api";
 import { formatCurrency, formatCompact } from "@/src/format";
@@ -11,6 +13,7 @@ export default function DuesScreen() {
   const styles = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { data, isLoading, refetch, isRefetching } = useVendorDues();
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
 
@@ -48,7 +51,12 @@ export default function DuesScreen() {
             const tint = categoryColor(v.vendor);
             const paidPct = v.total > 0 ? (v.paid / v.total) * 100 : 0;
             return (
-              <View key={v.vendor} style={styles.card} testID={`dues-vendor-${v.vendor.replace(/\s+/g, "-").toLowerCase()}`}>
+              <Pressable
+                key={v.vendor}
+                style={styles.card}
+                onPress={() => router.push(`/vendor/${encodeURIComponent(v.vendor)}`)}
+                testID={`dues-vendor-${v.vendor.replace(/\s+/g, "-").toLowerCase()}`}
+              >
                 <View style={styles.cardTop}>
                   <View style={[styles.avatar, { backgroundColor: tint + "22" }]}>
                     <Text style={[styles.avatarText, { color: tint }]}>{v.vendor.charAt(0).toUpperCase()}</Text>
@@ -63,6 +71,7 @@ export default function DuesScreen() {
                     <Text style={styles.outstanding}>{formatCurrency(v.outstanding)}</Text>
                     <Text style={styles.outstandingLabel}>outstanding</Text>
                   </View>
+                  <CaretRight size={18} color={colors.muted} weight="bold" />
                 </View>
                 <View style={styles.track}>
                   <View style={[styles.fill, { width: `${paidPct}%` }]} />
@@ -71,7 +80,7 @@ export default function DuesScreen() {
                   <Text style={styles.breakdownText}>Paid {formatCompact(v.paid)}</Text>
                   <Text style={styles.breakdownText}>of {formatCompact(v.total)}</Text>
                 </View>
-              </View>
+              </Pressable>
             );
           })}
         </ScrollView>

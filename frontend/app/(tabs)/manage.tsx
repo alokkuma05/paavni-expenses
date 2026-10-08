@@ -19,6 +19,8 @@ import {
   useCreateCategory,
   useBudgets,
   useUpsertBudget,
+  useRecurring,
+  useDeleteRecurring,
 } from "@/src/api";
 import { Segmented } from "@/src/components/common";
 import { LabeledInput } from "@/src/components/LabeledInput";
@@ -39,14 +41,16 @@ export default function ManageScreen() {
         <Text style={styles.title}>Manage</Text>
       </View>
       <View style={styles.segmentWrap}>
-        <Segmented options={["Vendors", "Categories", "Budgets"]} value={tab} onChange={setTab} testID="manage-segment" />
+        <Segmented options={["Vendors", "Categories", "Budgets", "Recurring"]} value={tab} onChange={setTab} testID="manage-segment" />
       </View>
       {tab === "Vendors" ? (
         <VendorsTab bottom={bottomChrome} />
       ) : tab === "Categories" ? (
         <CategoriesTab bottom={bottomChrome} />
-      ) : (
+      ) : tab === "Budgets" ? (
         <BudgetsTab bottom={bottomChrome} />
+      ) : (
+        <RecurringTab bottom={bottomChrome} />
       )}
     </View>
   );
@@ -269,6 +273,48 @@ function BudgetsTab({ bottom }: { bottom: number }) {
   );
 }
 
+function RecurringTab({ bottom }: { bottom: number }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
+  const { data: recurring, isLoading } = useRecurring();
+  const deleteRecurring = useDeleteRecurring();
+
+  return (
+    <ScrollView
+      contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottom + 40, paddingTop: 8 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <Text style={styles.recurringIntro}>
+        Bills marked “Repeat monthly” when adding an expense appear here and are auto-created at the start of each month.
+      </Text>
+      {isLoading ? (
+        <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: 24 }} />
+      ) : !recurring || recurring.length === 0 ? (
+        <Text style={styles.emptyText}>
+          No recurring bills yet. Toggle “Repeat monthly” when adding an expense.
+        </Text>
+      ) : (
+        recurring.map((r) => (
+          <View key={r.id} style={styles.recurringRow} testID={`recurring-row-${r.id}`}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.recurringVendor} numberOfLines={1}>{r.vendor}</Text>
+              <Text style={styles.recurringMeta} numberOfLines={1}>
+                {r.main_category} · {formatCurrency(r.amount)} · day {r.day_of_month}
+              </Text>
+              {r.last_generated ? (
+                <Text style={styles.recurringLast}>Last added {monthLabel(r.last_generated)}</Text>
+              ) : null}
+            </View>
+            <Pressable onPress={() => deleteRecurring.mutate(r.id)} hitSlop={10} testID={`recurring-stop-${r.id}`}>
+              <Trash size={20} color={colors.error} />
+            </Pressable>
+          </View>
+        ))
+      )}
+    </ScrollView>
+  );
+}
+
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 8 },
@@ -348,4 +394,17 @@ const useStyles = makeStyles((colors) => ({
   },
   budgetPrefix: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onSurfaceTertiary, marginRight: 2 },
   budgetInput: { flex: 1, fontFamily: fonts.semibold, fontSize: 15, color: colors.onSurface, paddingVertical: 10, textAlign: "right" },
+  recurringIntro: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted, marginBottom: 16, lineHeight: 19 },
+  recurringRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 8,
+    gap: 12,
+  },
+  recurringVendor: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onSurface },
+  recurringMeta: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 2 },
+  recurringLast: { fontFamily: fonts.medium, fontSize: 11, color: colors.brandPrimary, marginTop: 2 },
 }));

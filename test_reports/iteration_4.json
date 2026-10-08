@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 4 (Recurring Expenses + Vendor Statement + Budget Alerts) tested end-to-end. Backend: 9/9 new pytest cases pass covering (a) POST /api/expenses with recurring:true returns recurring=true + recurring_id and creates a template visible on GET /api/recurring with day_of_month derived from the expense date day (7 from 2026-10-07), (b) idempotency - calling GET /api/expenses twice keeps Office Landlord Oct 2026 count at exactly 1 instance, (c) auto-generated Oct 2026 Office Landlord instance is linked via recurring_id, Unpaid, amount 25000, main_category 'Office Expenses', (d) DELETE /api/recurring/{id} soft-deletes (removed from GET /api/recurring), (e) GET /api/expenses?vendor=Office Landlord returns ONLY that vendor's bills, (f) GET /api/export?vendor=Office Landlord returns valid xlsx with content-disposition filename containing 'office-landlord' slug and every data row vendor == 'Office Landlord', (g) GET /api/dashboard?month=2026-05 budget.by_category items each include pct/budget/spent/remaining/category, (h) Milk Procurement Cost shows budget=50000, spent=55000, pct=110.0 (flaggable >=90%). Frontend (390x844 mobile): Dashboard on May 2026 shows the amber alert banner (testID=budget-alert-banner) with text '1 category needs attention - 1 over, 0 near limit' and the red Milk Procurement Cost bar with ₹55.0K/₹50.0K label; Dues screen vendor cards are tappable (dues-vendor-verka-dairy clicked), navigates to /vendor/[name] showing vendor-statement-screen with vendor-summary card (₹50,900 outstanding, 2 bills, Billed ₹55,000, Paid ₹4,100) + bill list + vendor-export button in header; Manage has 4 segments (Vendors/Categories/Budgets/Recurring) - Recurring tab shows the Office Landlord template with 'Last added Oct 2026' metadata and a stop (delete) button (testID=recurring-stop-*); Expense form (new/create mode) exposes the 'Repeat monthly' toggle (testID=form-recurring-toggle). All 10 items from the request list are verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Carry-over warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Cosmetic, web-only."},
+      {"component": "pointerEvents prop", "issue": "Carry-over warning: 'props.pointerEvents is deprecated. Use style.pointerEvents.' Reference: app/(tabs)/index.tsx:59."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter4_recurring_vendor_alerts.py",
+    "/app/test_reports/pytest/iter4.xml"
+  ],
+  "action_items": [
+    "(Carry-over, non-blocking) Replace deprecated pointerEvents prop with style.pointerEvents in app/(tabs)/index.tsx:59 and migrate shadow* -> boxShadow for web.",
+    "(Nice-to-have) Consider validating recurring template amount >= 0 and vendor non-empty at the Pydantic layer; today a 0-amount recurring template is accepted."
+  ],
+  "critical_code_review_comments": [
+    "server.py ensure_recurring(): called inline from GET /api/expenses and GET /api/dashboard with no concurrency lock. If two requests race on the first-ever call for a month, both could pass the 'exists' check and insert duplicate instances before last_generated is set. Low practical risk for a single-user app but worth noting; a unique index on (recurring_id, month) in db.expenses would make this airtight.",
+    "server.py create_expense recurring path: last_generated is set to the created expense's month (doc['month']), so if a user creates a recurring bill back-dated to a past month, the current real month's instance will NOT auto-generate until next month rollover. May be surprising. Consider setting last_generated to current real month in this branch.",
+    "server.py delete_recurring: soft-deletes template but does NOT delete the existing month's generated instance - which is probably intended (user may have already paid it), but worth confirming with product.",
+    "export endpoint: when both month and vendor are provided, slug uses only vendor (month ignored in filename). Minor cosmetic.",
+    "vendor/[name].tsx: tapping a bill navigates to /expense-form?id=... but the expense form screen state uses recurring toggle only in create mode (hidden on existing). Verified correct via screenshot (recurring row shows 'Auto-created monthly' badge in edit mode)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter4_recurring_vendor_alerts.py (new)",
+    "/app/test_reports/pytest/iter4.xml (new)",
+    "/app/test_reports/iteration_4.json (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 iter4 tests)",
+    "frontend": "100% - 4/4 new UI flows verified (dashboard alert banner on May 2026, Dues->Vendor statement nav, Manage Recurring segment with stop button, Expense form Repeat monthly toggle)"
+  },
+  "seed_data_creation": "Created+cleaned test recurring expense (TEST_RecurVendor Oct 2026 Office Expenses 1500 day 7) and its template (deleted during test). No residue in DB. Pre-existing seed data (Office Landlord template, May 2026 Milk Procurement Cost budget) preserved.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iter4 backend tests at /app/backend/tests/test_iter4_recurring_vendor_alerts.py. Run with `pytest -p no:cacheprovider -o addopts=''` because pytest.ini forces xdist which breaks ordered class fixtures. Idempotency test depends on Office Landlord template already seeded with last_generated=2026-10. New testIDs: budget-alert-banner (dashboard, visible when any category >=90%), vendor-statement-screen, vendor-back, vendor-export, vendor-summary, vendor-bill-{id}, recurring-row-{id}, recurring-stop-{id}, form-recurring-toggle. Manage segment now has 4 options: Vendors/Categories/Budgets/Recurring. Current real month is 2026-10.",
+  "rca_of_issue": "N/A - all 3 iter4 features working as specified."
+}

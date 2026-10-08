@@ -55,6 +55,7 @@ export default function RootLayout() {
                 name="expense-form"
                 options={{ presentation: "modal" }}
               />
+              <Stack.Screen name="vendor/[name]" />
             </Stack>
           </KeyboardProvider>
         </SafeAreaProvider>

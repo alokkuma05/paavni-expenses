@@ -132,8 +132,17 @@ export default function DashboardScreen() {
                 const pct = data.budget.total_budget > 0
                   ? Math.min((data.budget.total_spent / data.budget.total_budget) * 100, 100)
                   : 0;
+                const atRisk = data.budget.by_category.filter((b) => b.pct >= 90);
                 return (
                   <>
+                    {atRisk.length > 0 ? (
+                      <View style={styles.alertBanner} testID="budget-alert-banner">
+                        <Text style={styles.alertText}>
+                          ⚠️ {atRisk.length} {atRisk.length === 1 ? "category needs" : "categories need"} attention —{" "}
+                          {atRisk.filter((b) => b.pct >= 100).length} over, {atRisk.filter((b) => b.pct >= 90 && b.pct < 100).length} near limit
+                        </Text>
+                      </View>
+                    ) : null}
                     <View style={styles.budgetTopRow}>
                       <Text style={styles.budgetSpent}>{formatCurrency(data.budget.total_spent)}</Text>
                       <Text style={styles.budgetOf}>of {formatCurrency(data.budget.total_budget)}</Text>
@@ -152,18 +161,22 @@ export default function DashboardScreen() {
 
               <View style={styles.budgetList}>
                 {data.budget.by_category.map((b) => {
-                  const over = b.spent > b.budget;
+                  const over = b.pct >= 100;
+                  const warn = b.pct >= 90 && b.pct < 100;
+                  const barColor = over ? colors.error : warn ? colors.warning : colors.brandSecondary;
                   const pct = Math.min(b.pct, 100);
                   return (
                     <View key={b.category} style={styles.budgetItem} testID={`budget-cat-${b.category.replace(/\s+/g, "-").toLowerCase()}`}>
                       <View style={styles.barHeader}>
-                        <Text style={styles.barLabel} numberOfLines={1}>{b.category}</Text>
-                        <Text style={[styles.barValue, over && { color: colors.error }]}>
+                        <Text style={styles.barLabel} numberOfLines={1}>
+                          {over ? "🔴 " : warn ? "🟠 " : ""}{b.category}
+                        </Text>
+                        <Text style={[styles.barValue, (over || warn) && { color: barColor }]}>
                           {formatCompact(b.spent)} / {formatCompact(b.budget)}
                         </Text>
                       </View>
                       <View style={styles.barTrack}>
-                        <View style={[styles.barFill, { width: `${Math.max(pct, 2)}%`, backgroundColor: over ? colors.error : colors.brandSecondary }]} />
+                        <View style={[styles.barFill, { width: `${Math.max(pct, 2)}%`, backgroundColor: barColor }]} />
                       </View>
                     </View>
                   );
@@ -276,6 +289,14 @@ const useStyles = makeStyles((colors) => ({
   progressText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.onSurface },
   progressTextMuted: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },
   budgetTopRow: { flexDirection: "row", alignItems: "baseline", gap: 8, marginBottom: 10 },
+  alertBanner: {
+    backgroundColor: "#FFF3E0",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
+  },
+  alertText: { fontFamily: fonts.semibold, fontSize: 13, color: "#B45309", lineHeight: 18 },
   budgetSpent: { fontFamily: fonts.extrabold, fontSize: 24, color: colors.onSurface },
   budgetOf: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },
   budgetNote: { fontFamily: fonts.semibold, fontSize: 13, marginTop: 10 },

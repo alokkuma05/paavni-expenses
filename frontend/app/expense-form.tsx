@@ -64,6 +64,7 @@ export default function ExpenseFormScreen() {
   const [gstPercent, setGstPercent] = useState("");
   const [tds, setTds] = useState("");
   const [remarks, setRemarks] = useState("");
+  const [recurring, setRecurring] = useState(false);
   const [error, setError] = useState("");
   const [showPayModal, setShowPayModal] = useState(false);
 
@@ -138,6 +139,7 @@ export default function ExpenseFormScreen() {
       gst_amount: gstOn ? gstAmount : null,
       tds: tds ? parseFloat(tds) : null,
       remarks: remarks || null,
+      recurring,
     };
 
     const onDone = () => router.back();
@@ -367,6 +369,30 @@ export default function ExpenseFormScreen() {
           <LabeledInput label="Remarks (optional)" value={remarks} onChangeText={setRemarks} multiline placeholder="Add a note…" testID="form-remarks" />
         </SectionCard>
 
+        {!isEdit ? (
+          <SectionCard title="Repeat">
+            <View style={styles.gstRow}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={styles.gstLabel}>Repeat monthly</Text>
+                <Text style={styles.repeatHint}>Auto-create this bill every month (rent, salaries, subscriptions)</Text>
+              </View>
+              <Switch
+                value={recurring}
+                onValueChange={setRecurring}
+                trackColor={{ true: colors.brandPrimary, false: colors.borderStrong }}
+                testID="form-recurring-toggle"
+              />
+            </View>
+          </SectionCard>
+        ) : existing?.recurring ? (
+          <SectionCard title="Repeat">
+            <View style={styles.recurringBadgeRow}>
+              <Text style={styles.recurringBadge}>🔁 Auto-created monthly</Text>
+            </View>
+            <Text style={styles.repeatHint}>Manage or stop this recurring bill from Manage → Recurring.</Text>
+          </SectionCard>
+        ) : null}
+
         {error ? (
           <Text style={styles.error} testID="form-error">
             {error}
@@ -403,6 +429,18 @@ const useStyles = makeStyles((colors) => ({
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24 },
   gstRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   gstLabel: { fontFamily: fonts.medium, fontSize: 15, color: colors.onSurface },
+  repeatHint: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 4 },
+  recurringBadgeRow: { flexDirection: "row", marginBottom: 6 },
+  recurringBadge: {
+    fontFamily: fonts.semibold,
+    fontSize: 13,
+    color: colors.onBrandTertiary,
+    backgroundColor: colors.brandTertiary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
   computedRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
   computedLabel: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },
   computedValue: { fontFamily: fonts.semibold, fontSize: 15, color: colors.onSurface },

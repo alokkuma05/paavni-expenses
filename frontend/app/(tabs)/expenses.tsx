@@ -212,7 +212,7 @@ function ExpenseRow({ expense, onPress }: { expense: Expense; onPress: () => voi
           {expense.vendor}
         </Text>
         <Text style={styles.rowCat} numberOfLines={1}>
-          {expense.main_category}
+          {expense.recurring ? "🔁 " : ""}{expense.main_category}
           {expense.detailed_head ? ` · ${expense.detailed_head}` : ""}
         </Text>
         <Text style={styles.rowDate}>{formatDate(expense.date)}</Text>

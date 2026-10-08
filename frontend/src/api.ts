@@ -73,6 +73,18 @@ export type Dashboard = {
 
 export type Budget = { id: string; month: string; main_category: string; amount: number };
 
+export type Recurring = {
+  id: string;
+  vendor: string;
+  main_category: string;
+  sub_category?: string | null;
+  detailed_head?: string | null;
+  amount: number;
+  day_of_month: number;
+  last_generated?: string | null;
+  active: boolean;
+};
+
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -101,6 +113,7 @@ export type ExpenseFilters = {
   month?: string | null;
   payment_status?: string | null;
   main_category?: string | null;
+  vendor?: string | null;
   date_from?: string | null;
   date_to?: string | null;
   q?: string | null;
@@ -111,6 +124,7 @@ export function useExpenses(filters: ExpenseFilters = {}) {
   if (filters.month) params.set("month", filters.month);
   if (filters.payment_status) params.set("payment_status", filters.payment_status);
   if (filters.main_category) params.set("main_category", filters.main_category);
+  if (filters.vendor) params.set("vendor", filters.vendor);
   if (filters.date_from) params.set("date_from", filters.date_from);
   if (filters.date_to) params.set("date_to", filters.date_to);
   if (filters.q) params.set("q", filters.q);
@@ -203,6 +217,22 @@ export function useVendorDues() {
 // ---- Export ----
 export function exportUrl(month: string | null): string {
   return `${API}/export${month ? `?month=${month}` : ""}`;
+}
+export function exportVendorUrl(vendor: string): string {
+  return `${API}/export?vendor=${encodeURIComponent(vendor)}`;
+}
+
+// ---- Recurring ----
+export function useRecurring() {
+  return useQuery({ queryKey: ["recurring"], queryFn: () => req<Recurring[]>("/recurring") });
+}
+
+export function useDeleteRecurring() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => req(`/recurring/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["recurring"] }),
+  });
 }
 
 // ---- Budgets ----

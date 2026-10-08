@@ -5,6 +5,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import io
+import calendar
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -155,6 +156,8 @@ class ExpenseBase(BaseModel):
     payment_date: Optional[str] = None
     bank_cash_account: Optional[str] = None
     remarks: Optional[str] = None
+    recurring: bool = False
+    recurring_id: Optional[str] = None
 
 class ExpenseCreate(ExpenseBase):
     pass
@@ -181,6 +184,22 @@ class PaymentRecord(BaseModel):
     payment_mode: Optional[str] = None
     payment_date: Optional[str] = None
     note: Optional[str] = None
+
+class Recurring(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    vendor: str
+    main_category: str
+    sub_category: Optional[str] = None
+    detailed_head: Optional[str] = None
+    amount: float = 0.0
+    cost_centre: Optional[str] = None
+    product_line: Optional[str] = None
+    tds: Optional[float] = None
+    remarks: Optional[str] = None
+    day_of_month: int = 1
+    active: bool = True
+    last_generated: Optional[str] = None
+    created_at: str = Field(default_factory=now_iso)
 
 
 def _derive(expense: dict) -> dict:
@@ -299,11 +318,68 @@ async def create_expense(payload: ExpenseCreate):
             date=doc.get("payment_date") or doc.get("date"),
             note="Initial payment",
         ).dict()]
+    # If flagged recurring, create a monthly template linked to this expense.
+    if payload.recurring and not payload.recurring_id:
+        try:
+            day = int((doc.get("date") or "")[8:10]) or 1
+        except ValueError:
+            day = 1
+        tmpl = Recurring(
+            vendor=doc["vendor"],
+            main_category=doc["main_category"],
+            sub_category=doc.get("sub_category"),
+            detailed_head=doc.get("detailed_head"),
+            amount=float(doc.get("amount") or 0),
+            cost_centre=doc.get("cost_centre"),
+            product_line=doc.get("product_line"),
+            tds=doc.get("tds"),
+            remarks=doc.get("remarks"),
+            day_of_month=day,
+            last_generated=doc.get("month"),
+        ).dict()
+        tmpl["deleted_at"] = None
+        await db.recurring.insert_one(tmpl)
+        doc["recurring_id"] = tmpl["id"]
+        doc["recurring"] = True
     doc["deleted_at"] = None
     await db.expenses.insert_one(doc)
     saved = await db.expenses.find_one({"id": expense.id})
     saved.pop("_id", None)
     return Expense(**saved)
+
+
+async def ensure_recurring():
+    """Auto-create the current month's instance for each active recurring template."""
+    month = now_iso()[:7]
+    templates = await db.recurring.find({"deleted_at": None, "active": True}).to_list(1000)
+    for t in templates:
+        if t.get("last_generated") == month:
+            continue
+        exists = await db.expenses.find_one({"recurring_id": t["id"], "month": month, "deleted_at": None})
+        if not exists:
+            y, m = int(month[:4]), int(month[5:7])
+            last_day = calendar.monthrange(y, m)[1]
+            day = min(int(t.get("day_of_month") or 1), last_day)
+            date = f"{month}-{day:02d}"
+            exp = Expense(
+                date=date,
+                vendor=t["vendor"],
+                main_category=t["main_category"],
+                sub_category=t.get("sub_category"),
+                detailed_head=t.get("detailed_head"),
+                amount=float(t.get("amount") or 0),
+                payment_status="Unpaid",
+                cost_centre=t.get("cost_centre"),
+                product_line=t.get("product_line"),
+                tds=t.get("tds"),
+                remarks=t.get("remarks"),
+                recurring=True,
+                recurring_id=t["id"],
+            )
+            edoc = _derive(exp.dict())
+            edoc["deleted_at"] = None
+            await db.expenses.insert_one(edoc)
+        await db.recurring.update_one({"id": t["id"]}, {"$set": {"last_generated": month}})
 
 @api_router.get("/expenses", response_model=List[Expense])
 async def list_expenses(
@@ -315,6 +391,7 @@ async def list_expenses(
     date_to: Optional[str] = None,
     q: Optional[str] = None,
 ):
+    await ensure_recurring()
     query = {"deleted_at": None}
     if month:
         query["month"] = month
@@ -421,6 +498,7 @@ async def delete_expense(expense_id: str):
 # ---------------------------------------------------------------------------
 @api_router.get("/dashboard")
 async def dashboard(month: Optional[str] = None):
+    await ensure_recurring()
     query = {"deleted_at": None}
     if month:
         query["month"] = month
@@ -569,15 +647,17 @@ async def vendor_dues():
 # Excel export
 # ---------------------------------------------------------------------------
 @api_router.get("/export")
-async def export_expenses(month: Optional[str] = None):
+async def export_expenses(month: Optional[str] = None, vendor: Optional[str] = None):
     query = {"deleted_at": None}
     if month:
         query["month"] = month
+    if vendor:
+        query["vendor"] = vendor
     docs = await db.expenses.find(query).sort("date", 1).to_list(5000)
 
     wb = Workbook()
     ws = wb.active
-    ws.title = (month or "All")[:31]
+    ws.title = (vendor or month or "All")[:31]
 
     headers = [
         "Date", "Vendor", "Main Category", "Sub Category", "Detailed Head",
@@ -630,12 +710,31 @@ async def export_expenses(month: Optional[str] = None):
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    fname = f"paavni-expenses-{month or 'all'}.xlsx"
+    slug = vendor.replace(" ", "-").lower() if vendor else (month or "all")
+    fname = f"paavni-expenses-{slug}.xlsx"
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Recurring expense templates
+# ---------------------------------------------------------------------------
+@api_router.get("/recurring", response_model=List[Recurring])
+async def list_recurring():
+    docs = await db.recurring.find({"deleted_at": None}).sort("vendor", 1).to_list(1000)
+    out = []
+    for d in docs:
+        d.pop("_id", None)
+        out.append(Recurring(**d))
+    return out
+
+@api_router.delete("/recurring/{recurring_id}")
+async def delete_recurring(recurring_id: str):
+    await db.recurring.update_one({"id": recurring_id}, {"$set": {"deleted_at": now_iso(), "active": False}})
+    return {"ok": True}
 
 
 app.include_router(api_router)
