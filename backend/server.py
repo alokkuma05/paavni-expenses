@@ -5,6 +5,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import io
+import json
 import calendar
 import logging
 from pathlib import Path
@@ -14,6 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
+from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 
 ROOT_DIR = Path(__file__).parent
@@ -735,6 +737,158 @@ async def list_recurring():
 async def delete_recurring(recurring_id: str):
     await db.recurring.update_one({"id": recurring_id}, {"$set": {"deleted_at": now_iso(), "active": False}})
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# AI (Claude Sonnet via Emergent Universal LLM key)
+# ---------------------------------------------------------------------------
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
+AI_MODEL = ("anthropic", "claude-sonnet-5-5")
+
+
+class AiParseRequest(BaseModel):
+    text: str
+
+class AiChatRequest(BaseModel):
+    session_id: Optional[str] = None
+    message: str
+
+
+def _category_tree_text() -> str:
+    lines = []
+    for main, subs in CATEGORY_HIERARCHY.items():
+        for sub, heads in subs.items():
+            lines.append(f"- {main} > {sub}: {', '.join(heads)}")
+    return "\n".join(lines)
+
+
+def _strip_json(text: str) -> str:
+    t = text.strip()
+    if t.startswith("```"):
+        t = t.split("```", 2)[1] if "```" in t[3:] else t[3:]
+        if t.lstrip().startswith("json"):
+            t = t.lstrip()[4:]
+    t = t.strip().strip("`").strip()
+    # extract the first {...} block
+    start = t.find("{")
+    end = t.rfind("}")
+    if start != -1 and end != -1:
+        t = t[start:end + 1]
+    return t
+
+
+@api_router.post("/ai/parse-expense")
+async def ai_parse_expense(payload: AiParseRequest):
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=503, detail="AI not configured")
+    today = now_iso()[:10]
+    system = (
+        "You extract a single business expense from the user's text for a dairy company (Paavni). "
+        f"Today's date is {today}. Return ONLY a JSON object (no prose, no code fences) with keys: "
+        "date (YYYY-MM-DD), vendor (string|null), main_category, sub_category, detailed_head, "
+        "amount (number), payment_mode, payment_status, product_line, remarks.\n"
+        "Choose main_category, sub_category and detailed_head ONLY from this exact list (pick the closest match); "
+        "if unsure set them to null:\n" + _category_tree_text() + "\n"
+        f"Valid payment_mode values: {', '.join(PAYMENT_MODES)} (or null).\n"
+        "Valid payment_status values: Unpaid, Partly Paid, Paid (default Unpaid if not stated).\n"
+        f"Valid product_line values: {', '.join(PRODUCT_LINES)} (or null).\n"
+        "If the date is not stated use today. If amount is unknown use 0. Interpret amounts in Indian Rupees; "
+        "expand shorthand like '45k' to 45000 and '1.2L' to 120000."
+    )
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=str(uuid.uuid4()), system_message=system).with_model(*AI_MODEL)
+    try:
+        raw = await chat.send_message(UserMessage(text=payload.text))
+        data = json.loads(_strip_json(raw if isinstance(raw, str) else str(raw)))
+    except Exception as e:
+        logger.exception("AI parse failed")
+        raise HTTPException(status_code=422, detail="Could not understand that. Try rephrasing.")
+    return {"parsed": data}
+
+
+async def _finance_context() -> str:
+    docs = await db.expenses.find({"deleted_at": None}).to_list(5000)
+    total = paid = outstanding = 0.0
+    by_cat = {}
+    by_month = {}
+    by_vendor = {}
+    for d in docs:
+        amt = float(d.get("amount") or 0)
+        p = float(d.get("paid_amount") or 0)
+        o = float(d.get("outstanding") or 0)
+        total += amt; paid += p; outstanding += o
+        by_cat[d.get("main_category", "Other")] = by_cat.get(d.get("main_category", "Other"), 0.0) + amt
+        m = d.get("month", "")
+        if m:
+            by_month[m] = by_month.get(m, 0.0) + amt
+        v = d.get("vendor", "Unknown")
+        bv = by_vendor.setdefault(v, {"total": 0.0, "out": 0.0})
+        bv["total"] += amt; bv["out"] += o
+
+    def fmt(x):
+        return f"₹{round(x):,}"
+
+    lines = [f"OVERALL (all time): total {fmt(total)}, paid {fmt(paid)}, outstanding {fmt(outstanding)}, {len(docs)} bills."]
+    lines.append("\nSPEND BY CATEGORY (all time):")
+    for k, v in sorted(by_cat.items(), key=lambda x: -x[1])[:12]:
+        lines.append(f"- {k}: {fmt(v)}")
+    lines.append("\nSPEND BY MONTH:")
+    for k in sorted(by_month.keys(), reverse=True)[:8]:
+        lines.append(f"- {k}: {fmt(by_month[k])}")
+    lines.append("\nVENDOR DUES (outstanding > 0):")
+    duev = [(k, v) for k, v in by_vendor.items() if v["out"] > 0]
+    for k, v in sorted(duev, key=lambda x: -x[1]["out"])[:12]:
+        lines.append(f"- {k}: outstanding {fmt(v['out'])} of {fmt(v['total'])} billed")
+
+    bdocs = await db.budgets.find({"deleted_at": None}).to_list(1000)
+    if bdocs:
+        lines.append("\nBUDGETS (month / category / budget vs actual):")
+        for b in bdocs:
+            month = b.get("month")
+            spent = sum(float(d.get("amount") or 0) for d in docs
+                        if d.get("month") == month and d.get("main_category") == b.get("main_category"))
+            lines.append(f"- {month} / {b.get('main_category')}: budget {fmt(float(b.get('amount') or 0))}, spent {fmt(spent)}")
+    return "\n".join(lines)
+
+
+@api_router.post("/ai/chat")
+async def ai_chat(payload: AiChatRequest):
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=503, detail="AI not configured")
+    session_id = payload.session_id or str(uuid.uuid4())
+
+    history = await db.ai_messages.find({"session_id": session_id}).sort("created_at", 1).to_list(50)
+    convo = ""
+    for h in history[-8:]:
+        role = "User" if h["role"] == "user" else "Assistant"
+        convo += f"{role}: {h['content']}\n"
+
+    context = await _finance_context()
+    system = (
+        "You are a concise financial analyst for 'Paavni', a dairy business expense & payment tracker. "
+        "Answer the user's question using ONLY the data below. All amounts are Indian Rupees (₹). "
+        "Be brief and specific, use short bullet points or 2-3 sentences, and include figures. "
+        "If the data does not contain the answer, say so plainly.\n\n=== CURRENT DATA ===\n" + context
+    )
+    user_text = (f"Conversation so far:\n{convo}\n" if convo else "") + f"User question: {payload.message}"
+
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=session_id, system_message=system).with_model(*AI_MODEL)
+    try:
+        raw = await chat.send_message(UserMessage(text=user_text))
+        reply = raw if isinstance(raw, str) else str(raw)
+    except Exception:
+        logger.exception("AI chat failed")
+        raise HTTPException(status_code=502, detail="AI is unavailable right now. Please try again.")
+
+    now = now_iso()
+    await db.ai_messages.insert_one({"id": str(uuid.uuid4()), "session_id": session_id, "role": "user", "content": payload.message, "created_at": now})
+    await db.ai_messages.insert_one({"id": str(uuid.uuid4()), "session_id": session_id, "role": "assistant", "content": reply, "created_at": now_iso()})
+    return {"session_id": session_id, "reply": reply}
+
+
+@api_router.get("/ai/chat/{session_id}")
+async def ai_chat_history(session_id: str):
+    docs = await db.ai_messages.find({"session_id": session_id}).sort("created_at", 1).to_list(200)
+    return [{"id": d["id"], "role": d["role"], "content": d["content"], "created_at": d["created_at"]} for d in docs]
 
 
 app.include_router(api_router)

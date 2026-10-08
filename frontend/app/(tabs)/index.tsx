@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Pressable,
   RefreshControl,
   ScrollView,
   Text,
@@ -9,11 +10,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { PieChart } from "react-native-gifted-charts";
+import { Sparkle } from "phosphor-react-native";
 import { makeStyles, useTheme, fonts } from "@/src/theme";
 import { useDashboard } from "@/src/api";
 import { formatCompact, formatCurrency, monthLabel, currentMonth } from "@/src/format";
 import { FAB, EmptyState, SectionCard, categoryColor } from "@/src/components/common";
 import { PickerField } from "@/src/components/PickerField";
+import { AiChatModal } from "@/src/components/AiChatModal";
 import { usesNativeTabs } from "@/src/navigation";
 
 export default function DashboardScreen() {
@@ -23,6 +26,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const [month, setMonth] = useState<string | null>(currentMonth());
   const autoSwitched = useRef(false);
+  const [showAi, setShowAi] = useState(false);
 
   const { data, isLoading, refetch, isRefetching } = useDashboard(month);
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
@@ -57,20 +61,25 @@ export default function DashboardScreen() {
           <Text style={styles.brand}>Paavni</Text>
           <Text style={styles.subtitle}>Expenses & Payments</Text>
         </View>
-        <View style={styles.periodPicker}>
-          <PickerField
-            label="Period"
-            value={monthLabel(month)}
-            options={periodOptions}
-            onChange={(label) => {
-              if (label === "All time") setMonth(null);
-              else {
-                const match = (data?.months ?? []).find((m) => monthLabel(m) === label);
-                setMonth(match ?? null);
-              }
-            }}
-            testID="dashboard-month-selector"
-          />
+        <View style={styles.headerRight}>
+          <Pressable style={styles.aiBtn} onPress={() => setShowAi(true)} testID="dashboard-ai-button">
+            <Sparkle size={20} color={colors.onBrandPrimary} weight="fill" />
+          </Pressable>
+          <View style={styles.periodPicker}>
+            <PickerField
+              label="Period"
+              value={monthLabel(month)}
+              options={periodOptions}
+              onChange={(label) => {
+                if (label === "All time") setMonth(null);
+                else {
+                  const match = (data?.months ?? []).find((m) => monthLabel(m) === label);
+                  setMonth(match ?? null);
+                }
+              }}
+              testID="dashboard-month-selector"
+            />
+          </View>
         </View>
       </View>
 
@@ -240,6 +249,8 @@ export default function DashboardScreen() {
       )}
 
       <FAB onPress={() => router.push("/expense-form")} bottom={bottomChrome + 16} testID="dashboard-fab" />
+
+      <AiChatModal visible={showAi} onClose={() => setShowAi(false)} />
     </View>
   );
 }
@@ -256,6 +267,15 @@ const useStyles = makeStyles((colors) => ({
   },
   brand: { fontFamily: fonts.extrabold, fontSize: 28, color: colors.onSurface },
   subtitle: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted, marginTop: 2 },
+  headerRight: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
+  aiBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.brandSecondary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   periodPicker: { width: 150 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   content: { paddingHorizontal: 20, paddingTop: 4 },

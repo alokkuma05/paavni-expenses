@@ -45,11 +45,17 @@ Build a mobile app for expenses recording and payment recording. User uploaded a
 - [x] **Smart Filters** — Expenses: debounced text search (vendor/category/head/product/remarks), filter bottom-sheet with category + date-range (from/to), active-filter bar. Backend `/api/expenses` gained `q`, `date_from`, `date_to`. Tested 13/13.
 - [x] **Budget Tracking** — `budgets` collection + upsert/list/delete endpoints; Manage "Budgets" segment (month picker + per-category amounts); Dashboard "Budget vs actual" card (over-budget in red). Dashboard returns a `budget` block per month.
 
+### 2026-06 (Iteration 5 — Claude AI)
+- [x] **Claude AI integration** — Anthropic `claude-sonnet-5-5` via `emergentintegrations` + Emergent Universal LLM key (`EMERGENT_LLM_KEY` in backend/.env).
+- [x] **Smart Add** — `POST /api/ai/parse-expense` turns free text into a structured expense (mapped to real category hierarchy, ₹ shorthand expansion) that prefills the Add Expense form.
+- [x] **AI Insights chat** — `POST /api/ai/chat` (+ `GET /api/ai/chat/{session_id}` history, persisted in `ai_messages`) answers questions grounded in the user's expenses/dues/budgets. Opened from a Sparkle button on the Dashboard. Tested 7/7 backend + frontend.
+
 ## Backlog / Remaining
-- P2: UI to zero-out/remove an existing budget (delete endpoint exists, no button yet).
-- P2: Budget amount validation (>=0) on backend.
-- P2: Vendor dues → tap to view that vendor's bills; vendor statement export.
-- P2: Cost-centre reports, GST/TDS compliance summary, by-product dashboard breakdown.
+- P2: Stream AI chat responses (currently non-streaming for Expo reliability).
+- P2: Receipt-photo scanning (needs OpenAI vision — Claude key is text-only).
+- P2: Monthly written AI summary auto-shown on dashboard.
+- P2: UI to zero-out/remove an existing budget (delete endpoint exists).
+- P2: Vendor statement drill-down filters; cost-centre & GST/TDS reports.
 
 ## Next Tasks
 - By-product cost breakdown on dashboard (product_line now captured).

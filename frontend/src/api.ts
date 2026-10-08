@@ -235,6 +235,39 @@ export function useDeleteRecurring() {
   });
 }
 
+// ---- AI ----
+export type ParsedExpense = {
+  date?: string | null;
+  vendor?: string | null;
+  main_category?: string | null;
+  sub_category?: string | null;
+  detailed_head?: string | null;
+  amount?: number | null;
+  payment_mode?: string | null;
+  payment_status?: string | null;
+  product_line?: string | null;
+  remarks?: string | null;
+};
+
+export function useParseExpense() {
+  return useMutation({
+    mutationFn: (text: string) =>
+      req<{ parsed: ParsedExpense }>("/ai/parse-expense", { method: "POST", body: JSON.stringify({ text }) }),
+  });
+}
+
+export type AiChatMessage = { id?: string; role: "user" | "assistant"; content: string };
+
+export function useAiChat() {
+  return useMutation({
+    mutationFn: (args: { session_id: string | null; message: string }) =>
+      req<{ session_id: string; reply: string }>("/ai/chat", {
+        method: "POST",
+        body: JSON.stringify(args),
+      }),
+  });
+}
+
 // ---- Budgets ----
 export function useBudgets(month: string) {
   return useQuery({

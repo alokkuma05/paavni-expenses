@@ -4,6 +4,7 @@ import {
   Pressable,
   Switch,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,7 +13,7 @@ import {
   KeyboardAwareScrollView,
   KeyboardStickyView,
 } from "react-native-keyboard-controller";
-import { X, Trash } from "phosphor-react-native";
+import { X, Trash, Sparkle } from "phosphor-react-native";
 import { makeStyles, useTheme, fonts } from "@/src/theme";
 import {
   useMasters,
@@ -22,6 +23,7 @@ import {
   useCreateExpense,
   useUpdateExpense,
   useDeleteExpense,
+  useParseExpense,
 } from "@/src/api";
 import { LabeledInput } from "@/src/components/LabeledInput";
 import { PickerField } from "@/src/components/PickerField";
@@ -67,6 +69,30 @@ export default function ExpenseFormScreen() {
   const [recurring, setRecurring] = useState(false);
   const [error, setError] = useState("");
   const [showPayModal, setShowPayModal] = useState(false);
+  const [smartText, setSmartText] = useState("");
+  const [smartNote, setSmartNote] = useState("");
+  const parseExpense = useParseExpense();
+
+  const runSmartAdd = () => {
+    if (!smartText.trim()) return;
+    setSmartNote("");
+    parseExpense.mutate(smartText.trim(), {
+      onSuccess: ({ parsed }) => {
+        if (parsed.date) setDate(parsed.date);
+        if (parsed.vendor) setVendor(parsed.vendor);
+        if (parsed.main_category) setMain(parsed.main_category);
+        if (parsed.sub_category) setSub(parsed.sub_category);
+        if (parsed.detailed_head) setHead(parsed.detailed_head);
+        if (parsed.amount != null && parsed.amount > 0) setAmount(String(parsed.amount));
+        if (parsed.payment_mode) setPaymentMode(parsed.payment_mode);
+        if (parsed.payment_status) setPaymentStatus(parsed.payment_status);
+        if (parsed.product_line) setProductLine(parsed.product_line);
+        if (parsed.remarks) setRemarks(parsed.remarks);
+        setSmartNote("✓ Filled below — review and save.");
+      },
+      onError: () => setSmartNote("Couldn't read that. Try rephrasing."),
+    });
+  };
 
   useEffect(() => {
     if (existing) {
@@ -183,6 +209,38 @@ export default function ExpenseFormScreen() {
         bottomOffset={90}
         showsVerticalScrollIndicator={false}
       >
+        {!isEdit ? (
+          <View style={styles.smartCard} testID="smart-add-card">
+            <View style={styles.smartHeader}>
+              <Sparkle size={18} color={colors.brandPrimary} weight="fill" />
+              <Text style={styles.smartTitle}>Smart add</Text>
+            </View>
+            <Text style={styles.smartHint}>Describe the expense and AI fills the form.</Text>
+            <TextInput
+              style={styles.smartInput}
+              value={smartText}
+              onChangeText={setSmartText}
+              placeholder="e.g. Paid Verka Dairy 45k for milk via UPI"
+              placeholderTextColor={colors.muted}
+              multiline
+              testID="smart-add-input"
+            />
+            <Pressable
+              style={[styles.smartBtn, (!smartText.trim() || parseExpense.isPending) && styles.smartBtnDisabled]}
+              onPress={runSmartAdd}
+              disabled={!smartText.trim() || parseExpense.isPending}
+              testID="smart-add-button"
+            >
+              {parseExpense.isPending ? (
+                <ActivityIndicator color={colors.onBrandPrimary} size="small" />
+              ) : (
+                <Text style={styles.smartBtnText}>✨ Fill with AI</Text>
+              )}
+            </Pressable>
+            {smartNote ? <Text style={styles.smartNote}>{smartNote}</Text> : null}
+          </View>
+        ) : null}
+
         <SectionCard title="Details">
           <DateField label="Date" value={date} onChange={setDate} testID="form-date" />
           <PickerField
@@ -427,6 +485,35 @@ const useStyles = makeStyles((colors) => ({
   },
   headerTitle: { fontFamily: fonts.bold, fontSize: 18, color: colors.onSurface },
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24 },
+  smartCard: {
+    backgroundColor: colors.brandTertiary,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  smartHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  smartTitle: { fontFamily: fonts.bold, fontSize: 15, color: colors.onBrandTertiary },
+  smartHint: { fontFamily: fonts.regular, fontSize: 12, color: colors.onBrandTertiary, opacity: 0.8, marginTop: 4, marginBottom: 10 },
+  smartInput: {
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: 10,
+    padding: 12,
+    minHeight: 60,
+    fontFamily: fonts.medium,
+    fontSize: 15,
+    color: colors.onSurface,
+    textAlignVertical: "top",
+  },
+  smartBtn: {
+    backgroundColor: colors.brandPrimary,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  smartBtnDisabled: { opacity: 0.5 },
+  smartBtnText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.onBrandPrimary },
+  smartNote: { fontFamily: fonts.medium, fontSize: 12, color: colors.onBrandTertiary, marginTop: 8, textAlign: "center" },
   gstRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   gstLabel: { fontFamily: fonts.medium, fontSize: 15, color: colors.onSurface },
   repeatHint: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: 4 },
